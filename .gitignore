@@ -1,0 +1,32 @@
+# Fichiers de configuration sensibles
+config/db_credentials.php
+
+# Dossiers de cache / logs
+logs/
+*.log
+
+# Fichiers de session PHP
+/tmp/
+
+# Fichiers OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Fichiers IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dépendances Node (si jamais)
+node_modules/
+
+# Fichiers de test temporaires
+test_*.php
+debug_*.php
+
+# Fichiers de sauvegarde
+*.bak
+*.backup
+*.old

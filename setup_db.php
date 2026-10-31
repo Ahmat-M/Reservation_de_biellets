@@ -1,0 +1,165 @@
+<?php
+if (!headers_sent()) {
+    header('Content-Type: text/html; charset=utf-8');
+}
+
+$host = "localhost";
+$username = "root";
+$password = "";
+$db_name = "Databasevg";
+
+try {
+    $pdo = new PDO("mysql:host=$host", $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+    ]);
+
+    $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db_name` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
+    $pdo->exec("USE `$db_name`;");
+
+    // Structure des tables
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS `users` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `name` VARCHAR(100) NOT NULL,
+          `telephone` VARCHAR(30) DEFAULT NULL,
+          `email` VARCHAR(150) NOT NULL UNIQUE,
+          `password` VARCHAR(255) NOT NULL,
+          `role` ENUM('admin', 'agent', 'client') DEFAULT 'client',
+          `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `vehicules` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `marque` VARCHAR(100) NOT NULL,
+          `immatriculation` VARCHAR(50) NOT NULL,
+          `capacite` INT NOT NULL,
+          `climatise` TINYINT(1) DEFAULT 1,
+          `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `chauffeurs` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `nom` VARCHAR(100) NOT NULL,
+          `telephone` VARCHAR(30) DEFAULT NULL,
+          `permis` VARCHAR(50) DEFAULT NULL,
+          `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `voyages` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `ville_depart` VARCHAR(100) NOT NULL,
+          `ville_arrivee` VARCHAR(100) NOT NULL,
+          `gare_depart` VARCHAR(150) DEFAULT 'Gare Routière Centrale',
+          `date_depart` DATETIME NOT NULL,
+          `date_arrivee` DATETIME NOT NULL,
+          `prix` DECIMAL(10,2) NOT NULL,
+          `places_disponibles` INT NOT NULL,
+          `compagnie` VARCHAR(100) DEFAULT 'TchadBus Express',
+          `vehicule_id` INT DEFAULT NULL,
+          `chauffeur_id` INT DEFAULT NULL,
+          `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (`vehicule_id`) REFERENCES `vehicules`(`id`) ON DELETE SET NULL,
+          FOREIGN KEY (`chauffeur_id`) REFERENCES `chauffeurs`(`id`) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `reservations` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `user_id` INT NOT NULL,
+          `voyage_id` INT NOT NULL,
+          `nombre_places` INT NOT NULL DEFAULT 1,
+          `date_reservation` DATETIME DEFAULT CURRENT_TIMESTAMP,
+          `statut` VARCHAR(50) DEFAULT 'en_attente',
+          `mode_reservation` VARCHAR(50) DEFAULT 'en_ligne',
+          FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+          FOREIGN KEY (`voyage_id`) REFERENCES `voyages`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `paiements` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `reservation_id` INT NOT NULL,
+          `montant` DECIMAL(10,2) NOT NULL,
+          `methode` VARCHAR(50) NOT NULL,
+          `numero_transaction` VARCHAR(100) DEFAULT NULL,
+          `telephone_paiement` VARCHAR(30) DEFAULT NULL,
+          `statut` VARCHAR(50) DEFAULT 'payé',
+          `date_paiement` DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (`reservation_id`) REFERENCES `reservations`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `tickets` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `reservation_id` INT NOT NULL,
+          `numero_ticket` VARCHAR(100) NOT NULL UNIQUE,
+          `statut` VARCHAR(50) DEFAULT 'valide',
+          `date_creation` DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (`reservation_id`) REFERENCES `reservations`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ");
+
+    // Ajouter colonnes si tables existantes sans ces champs
+    $colsUser = $pdo->query("SHOW COLUMNS FROM users LIKE 'telephone'")->fetchAll();
+    if (empty($colsUser)) {
+        $pdo->exec("ALTER TABLE users ADD COLUMN `telephone` VARCHAR(30) DEFAULT NULL AFTER `name`");
+    }
+
+    $colsVoyage = $pdo->query("SHOW COLUMNS FROM voyages LIKE 'compagnie'")->fetchAll();
+    if (empty($colsVoyage)) {
+        $pdo->exec("ALTER TABLE voyages ADD COLUMN `compagnie` VARCHAR(100) DEFAULT 'TchadBus Express' AFTER `places_disponibles`");
+        $pdo->exec("ALTER TABLE voyages ADD COLUMN `gare_depart` VARCHAR(150) DEFAULT 'Gare Routière de Dembé (N\'Djaména)' AFTER `ville_arrivee`");
+    }
+
+    // Utilisateurs
+    $adminPass = password_hash('admin123', PASSWORD_DEFAULT);
+    $clientPass = password_hash('client123', PASSWORD_DEFAULT);
+
+    $stmt = $pdo->prepare("INSERT INTO users (name, telephone, email, password, role) 
+        SELECT 'Administrateur TchadBus', '+235 66 20 00 01', 'admin@bussystem.com', :pass, 'admin' 
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@bussystem.com')");
+    $stmt->execute([':pass' => $adminPass]);
+
+    $stmt = $pdo->prepare("INSERT INTO users (name, telephone, email, password, role) 
+        SELECT 'Mahamat Saleh', '+235 66 45 12 34', 'client@bussystem.com', :pass, 'client' 
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'client@bussystem.com')");
+    $stmt->execute([':pass' => $clientPass]);
+
+    // Véhicules réels au Tchad
+    $pdo->exec("
+        INSERT INTO `vehicules` (`id`, `marque`, `immatriculation`, `capacite`) VALUES
+        (1, 'Toyota Coaster VIP (Climatisé)', '14-A-1234-TD', 30),
+        (2, 'Mercedes-Benz Travego Grand Confort', '14-B-5678-TD', 55),
+        (3, 'Scania Marcopolo G7', '14-C-9012-TD', 60),
+        (4, 'Toyota HiAce Bus Interurbain', '14-D-3456-TD', 18)
+        ON DUPLICATE KEY UPDATE `marque`=VALUES(`marque`), `immatriculation`=VALUES(`immatriculation`), `capacite`=VALUES(`capacite`);
+    ");
+
+    // Chauffeurs tchadiens
+    $pdo->exec("
+        INSERT INTO `chauffeurs` (`id`, `nom`, `telephone`, `permis`) VALUES
+        (1, 'Abdelkerim Mahamat', '+235 66 33 22 11', 'CH-TD-2018-091'),
+        (2, 'Djibrine Souleymane', '+235 99 44 55 66', 'CH-TD-2019-142'),
+        (3, 'Brahim Allamine', '+235 62 77 88 99', 'CH-TD-2020-305'),
+        (4, 'Nodji Joel', '+235 95 11 22 33', 'CH-TD-2021-084')
+        ON DUPLICATE KEY UPDATE `nom`=VALUES(`nom`), `telephone`=VALUES(`telephone`), `permis`=VALUES(`permis`);
+    ");
+
+    // Trajets interurbains populaires au Tchad
+    $pdo->exec("DELETE FROM `voyages` WHERE `id` IN (1, 2, 3, 4, 5, 6);");
+    $pdo->exec("
+        INSERT INTO `voyages` (`id`, `ville_depart`, `ville_arrivee`, `gare_depart`, `date_depart`, `date_arrivee`, `prix`, `places_disponibles`, `compagnie`, `vehicule_id`, `chauffeur_id`) VALUES
+        (1, 'N\'Djaména', 'Moundou', 'Gare Routière de Dembé', DATE_ADD(NOW(), INTERVAL 1 DAY), DATE_ADD(DATE_ADD(NOW(), INTERVAL 1 DAY), INTERVAL 8 HOUR), 12000.00, 30, 'Abou Simbil Transport', 1, 1),
+        (2, 'N\'Djaména', 'Abéché', 'Gare de Chagoua / N\'Djaména Est', DATE_ADD(NOW(), INTERVAL 1 DAY), DATE_ADD(DATE_ADD(NOW(), INTERVAL 1 DAY), INTERVAL 12 HOUR), 15000.00, 50, 'Toumaï Express Tchad', 2, 2),
+        (3, 'N\'Djaména', 'Sarh', 'Gare Routière de Dembé', DATE_ADD(NOW(), INTERVAL 2 DAY), DATE_ADD(DATE_ADD(NOW(), INTERVAL 2 DAY), INTERVAL 10 HOUR), 13000.00, 45, 'SNDT Transport', 3, 3),
+        (4, 'Moundou', 'N\'Djaména', 'Gare Centrale de Moundou', DATE_ADD(NOW(), INTERVAL 2 DAY), DATE_ADD(DATE_ADD(NOW(), INTERVAL 2 DAY), INTERVAL 8 HOUR), 12000.00, 28, 'Abou Simbil Transport', 1, 1),
+        (5, 'N\'Djaména', 'Kélo', 'Gare Routière de Walia', DATE_ADD(NOW(), INTERVAL 3 DAY), DATE_ADD(DATE_ADD(NOW(), INTERVAL 3 DAY), INTERVAL 6 HOUR), 10000.00, 16, 'Express du Sud', 4, 4),
+        (6, 'N\'Djaména', 'Bongor', 'Gare Routière de Walia', DATE_ADD(NOW(), INTERVAL 3 DAY), DATE_ADD(DATE_ADD(NOW(), INTERVAL 3 DAY), INTERVAL 4 HOUR), 7000.00, 25, 'Tchad Bus Rapide', 1, 1);
+    ");
+
+    echo "<div style='font-family: Arial; padding: 25px; background: #e8f5e9; border: 2px solid #2e7d32; border-radius: 10px; color: #1b5e20;'>";
+    echo "<h2>✓ Base de données TchadBus configurée avec succès !</h2>";
+    echo "<p>Les lignes interurbaines au Tchad (N'Djaména, Moundou, Abéché, Sarh, Kélo, Bongor) ont été configurées avec Airtel Money, Moov Money et paiement en agence.</p>";
+    echo "<p><a href='index.php' style='display:inline-block; padding:10px 20px; background:#2e7d32; color:white; text-decoration:none; border-radius:5px; font-weight:bold;'>Accéder à l'accueil</a></p>";
+    echo "</div>";
+
+} catch (PDOException $e) {
+    echo "<p>Erreur: " . htmlspecialchars($e->getMessage()) . "</p>";
+}
